@@ -1,60 +1,108 @@
 import streamlit as st
+import time
 from agents import Agents
 from queue_jobs import JobQueue
 from stack_versions import VersionStack
 from logs import Logs
 from pipeline import Pipeline
 
-agents = Agents()
-jobs = JobQueue()
-versions = VersionStack()
-logs = Logs()
-pipeline = Pipeline()
+st.set_page_config(page_title="GitHub CI/CD 💖", layout="wide")
 
-for stage in ["Checkout", "Dependencias", "Linter", "Tests", "Deploy"]:
-    pipeline.add_stage(stage)
+# ---------------- SESSION STATE ----------------
+if "agents" not in st.session_state:
+    st.session_state.agents = Agents()
+    st.session_state.jobs = JobQueue()
+    st.session_state.versions = VersionStack()
+    st.session_state.logs = Logs()
+    st.session_state.pipeline = Pipeline()
 
-st.title("Simulador CI/CD")
+    for stage in ["Checkout", "Dependencias", "Linter", "Tests", "Deploy"]:
+        st.session_state.pipeline.add_stage(stage)
 
-st.subheader("Agentes")
-for k, v in agents.get_status().items():
-    st.write(f"{k}: {v}")
+agents = st.session_state.agents
+jobs = st.session_state.jobs
+versions = st.session_state.versions
+logs = st.session_state.logs
+pipeline = st.session_state.pipeline
 
-job_name = st.text_input("Nuevo Job")
+# ---------------- UI ----------------
+st.title("💖 GitHub Actions Simulator")
+st.caption("CI/CD real con estructuras de datos")
+
+# ---------------- INPUT ----------------
+job = st.text_input("Nuevo Job")
 
 if st.button("Agregar Job"):
-    if job_name:
-        jobs.add_job(job_name)
-        logs.add(f"Job agregado: {job_name}")
+    if job:
+        jobs.add_job(job)
+        logs.add(f"[QUEUE] {job}")
 
-if st.button("Procesar Job"):
-    for agent in agents.get_status():
-        if agents.status[agent] == "Libre":
-            job = jobs.get_job()
-            if job:
-                agents.status[agent] = f"Ocupado ({job})"
-                logs.add(f"{job} en {agent}")
-                version = f"v{len(versions.get_all())+1}"
-                versions.push(version)
-                logs.add(f"Deploy: {version}")
-            break
+if st.button("Ejecutar Pipeline"):
+    job = jobs.get_job()
+
+    if job:
+        agent = agents.assign(job)
+
+        if agent:
+            logs.add(f"[RUNNING] {job} en {agent}")
+
+            stages = pipeline.get_stages()
+
+            progress = st.progress(0)
+            status_placeholder = st.empty()
+
+            for i, stage in enumerate(stages):
+                # 🔄 RUNNING
+                stage.status = "running"
+                status_placeholder.warning(f"⏳ {stage.stage} ejecutándose...")
+                logs.add(f"[RUNNING] {stage.stage}")
+
+                time.sleep(0.8)
+
+                # ✅ SUCCESS
+                stage.status = "success"
+                logs.add(f"[SUCCESS] {stage.stage}")
+
+                progress.progress((i+1)/len(stages))
+
+            # 📦 Deploy final
+            version = f"v{len(versions.get_all())+1}"
+            versions.push(version)
+
+            logs.add(f"[DEPLOY] {version}")
+            status_placeholder.success("🚀 Pipeline completado")
+
+            agents.release(agent)
+
+        else:
+            logs.add("[ERROR] No hay agentes disponibles")
+
+# ---------------- UI PIPELINE ----------------
+cols = st.columns(len(pipeline.get_stages()))
+
+for i, stage in enumerate(pipeline.get_stages()):
+    with cols[i]:
+        if stage.status == "success":
+            st.success(f"✔ {stage.stage}")
+        elif stage.status == "running":
+            st.warning(f"⏳ {stage.stage}")
+        else:
+            st.info(f"• {stage.stage}")
+
+# ---------------- COLA ----------------
+st.subheader("Cola")
+st.write(jobs.list_jobs())
+
+# ---------------- VERSIONES ----------------
+st.subheader("Versiones")
+st.write(versions.get_all())
 
 if st.button("Rollback"):
     removed = versions.rollback()
     if removed:
-        logs.add(f"Rollback: eliminado {removed}")
-    else:
-        logs.add("No hay rollback disponible")
+        logs.add(f"[ROLLBACK] {removed}")
 
-st.subheader("Cola")
-st.write(jobs.list_jobs())
-
-st.subheader("Pipeline")
-st.write(" -> ".join(pipeline.get_stages()))
-
-st.subheader("Versiones")
-st.write(versions.get_all())
-
+# ---------------- LOGS ----------------
 st.subheader("Logs")
 for log in logs.get_logs():
-    st.text(log)
+    st.code(log)

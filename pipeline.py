@@ -2,6 +2,7 @@ class Node:
     def __init__(self, stage):
         self.stage = stage
         self.next = None
+        self.status = "pending"  # pending, running, success
 
 class Pipeline:
     def __init__(self):
@@ -21,6 +22,12 @@ class Pipeline:
         stages = []
         current = self.head
         while current:
-            stages.append(current.stage)
+            stages.append(current)
             current = current.next
         return stages
+
+    def reset(self):
+        current = self.head
+        while current:
+            current.status = "pending"
+            current = current.next
