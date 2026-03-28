@@ -8,7 +8,7 @@ from pipeline import Pipeline
 
 st.set_page_config(page_title="GitHub CI/CD 💖", layout="wide")
 
-# ---------------- SESSION STATE ----------------
+# INICIALIZAR ESTADOS
 if "agents" not in st.session_state:
     st.session_state.agents = Agents()
     st.session_state.jobs = JobQueue()
@@ -25,11 +25,26 @@ versions = st.session_state.versions
 logs = st.session_state.logs
 pipeline = st.session_state.pipeline
 
-# ---------------- UI ----------------
 st.title("💖 GitHub Actions Simulator")
-st.caption("CI/CD real con estructuras de datos")
+st.caption("CI/CD con estructuras de datos")
 
-# ---------------- INPUT ----------------
+# RENDER PIPELINE
+pipeline_container = st.empty()
+
+def render_pipeline():
+    cols = pipeline_container.columns(len(pipeline.get_stages()))
+    for i, stage in enumerate(pipeline.get_stages()):
+        with cols[i]:
+            if stage.status == "success":
+                st.success(f"✔ {stage.stage}")
+            elif stage.status == "running":
+                st.warning(f"⏳ {stage.stage}")
+            else:
+                st.info(f"• {stage.stage}")
+
+render_pipeline()
+
+# INPUT NUEVO JOB
 job = st.text_input("Nuevo Job")
 
 if st.button("Agregar Job"):
@@ -37,6 +52,7 @@ if st.button("Agregar Job"):
         jobs.add_job(job)
         logs.add(f"[QUEUE] {job}")
 
+# EJECUTAR PIPELINE
 if st.button("Ejecutar Pipeline"):
     job = jobs.get_job()
 
@@ -47,53 +63,41 @@ if st.button("Ejecutar Pipeline"):
             logs.add(f"[RUNNING] {job} en {agent}")
 
             stages = pipeline.get_stages()
-
             progress = st.progress(0)
-            status_placeholder = st.empty()
+
+            
+            pipeline.reset()
 
             for i, stage in enumerate(stages):
-                # 🔄 RUNNING
                 stage.status = "running"
-                status_placeholder.warning(f"⏳ {stage.stage} ejecutándose...")
+                render_pipeline()
+
                 logs.add(f"[RUNNING] {stage.stage}")
+                time.sleep(1)
 
-                time.sleep(0.8)
-
-                # ✅ SUCCESS
                 stage.status = "success"
-                logs.add(f"[SUCCESS] {stage.stage}")
+                render_pipeline()
 
+                logs.add(f"[SUCCESS] {stage.stage}")
                 progress.progress((i+1)/len(stages))
 
-            # 📦 Deploy final
+            
             version = f"v{len(versions.get_all())+1}"
             versions.push(version)
 
             logs.add(f"[DEPLOY] {version}")
-            status_placeholder.success("🚀 Pipeline completado")
+            st.success("🚀 Pipeline completado")
 
             agents.release(agent)
 
         else:
             logs.add("[ERROR] No hay agentes disponibles")
 
-# ---------------- UI PIPELINE ----------------
-cols = st.columns(len(pipeline.get_stages()))
-
-for i, stage in enumerate(pipeline.get_stages()):
-    with cols[i]:
-        if stage.status == "success":
-            st.success(f"✔ {stage.stage}")
-        elif stage.status == "running":
-            st.warning(f"⏳ {stage.stage}")
-        else:
-            st.info(f"• {stage.stage}")
-
-# ---------------- COLA ----------------
+#---------------------------
 st.subheader("Cola")
 st.write(jobs.list_jobs())
 
-# ---------------- VERSIONES ----------------
+#---------------------------
 st.subheader("Versiones")
 st.write(versions.get_all())
 
